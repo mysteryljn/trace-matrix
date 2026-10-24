@@ -1,0 +1,4 @@
+id,description,test_ids
+REQ-001,diagnostic session shall time out,TEST-001
+REQ-002,OTA package shall be authenticated,TEST-002;TEST-003
+REQ-003,telemetry shall be minimized,
