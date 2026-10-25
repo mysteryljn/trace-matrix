@@ -22,4 +22,27 @@ class TraceTests(unittest.TestCase):
         self.assertIn({"kind":"missing_requirement_id"}, report["issues"])
         self.assertIn({"kind":"uncovered_requirement","id":""}, report["issues"])
         self.assertFalse(report["ok"])
+
+    def test_duplicate_scan_does_not_require_quadratic_list_count(self):
+        class CountForbiddenList(list):
+            def count(self, value):
+                raise AssertionError("duplicate detection must use one-pass counts")
+
+        report=validate(
+            CountForbiddenList([{"id":"R1","test_ids":"T1"},{"id":"R2","test_ids":"T2"}]),
+            CountForbiddenList([{"test_id":"T1"},{"test_id":"T2"}]),
+        )
+        self.assertTrue(report["ok"])
+
+    def test_rejects_rows_with_extra_csv_fields(self):
+        report=validate(
+            [{"id":"R1","test_ids":"T1",None:["unexpected"]}],
+            [{"test_id":"T1"}],
+        )
+        self.assertIn(
+            {"kind":"extra_csv_fields","source":"requirements","row":1,"count":1},
+            report["issues"],
+        )
+        self.assertFalse(report["ok"])
+
 if __name__=="__main__": unittest.main()

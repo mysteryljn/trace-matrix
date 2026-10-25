@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+from collections import Counter
 from pathlib import Path
 
 def read_csv(path):
@@ -17,11 +18,27 @@ def _clean(value):
     return "" if value is None else str(value).strip()
 
 def validate(requirements,tests):
-    issues=[]; requirement_ids=[_clean(row.get("id")) for row in requirements]
-    duplicate_requirements={item for item in requirement_ids if item and requirement_ids.count(item)>1}
+    issues=[]
+    for source, rows in (("requirements", requirements), ("tests", tests)):
+        for row_number, row in enumerate(rows, 1):
+            # ``csv.DictReader`` stores values beyond the declared header under
+            # a ``None`` key.  Ignoring those values can make a malformed row
+            # appear fully covered, so report it as invalid traceability data.
+            extras = row.get(None) if isinstance(row, dict) else None
+            if extras:
+                issues.append({
+                    "kind": "extra_csv_fields",
+                    "source": source,
+                    "row": row_number,
+                    "count": len(extras),
+                })
+    requirement_ids=[_clean(row.get("id")) for row in requirements]
+    requirement_counts=Counter(requirement_ids)
+    duplicate_requirements={item for item, count in requirement_counts.items() if item and count>1}
     for item in sorted(duplicate_requirements): issues.append({"kind":"duplicate_requirement_id","id":item})
     test_ids=[_clean(row.get("test_id")) for row in tests]; known=set(test_ids)
-    duplicates={item for item in test_ids if item and test_ids.count(item)>1}
+    test_counts=Counter(test_ids)
+    duplicates={item for item, count in test_counts.items() if item and count>1}
     for item in sorted(duplicates): issues.append({"kind":"duplicate_test_id","id":item})
     referenced=set()
     for row in requirements:
