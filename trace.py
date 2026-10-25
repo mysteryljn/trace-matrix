@@ -7,13 +7,25 @@ from pathlib import Path
 def read_csv(path):
     with path.open(newline="",encoding="utf-8-sig") as handle: return list(csv.DictReader(handle))
 
+def _clean(value):
+    """Normalize a CSV cell, including omitted trailing cells.
+
+    ``csv.DictReader`` stores a row that omits a trailing column as ``None``.
+    Treating that as an empty cell lets validation report the malformed
+    traceability data instead of failing with ``AttributeError``.
+    """
+    return "" if value is None else str(value).strip()
+
 def validate(requirements,tests):
-    issues=[]; test_ids=[row.get("test_id","").strip() for row in tests]; known=set(test_ids)
+    issues=[]; requirement_ids=[_clean(row.get("id")) for row in requirements]
+    duplicate_requirements={item for item in requirement_ids if item and requirement_ids.count(item)>1}
+    for item in sorted(duplicate_requirements): issues.append({"kind":"duplicate_requirement_id","id":item})
+    test_ids=[_clean(row.get("test_id")) for row in tests]; known=set(test_ids)
     duplicates={item for item in test_ids if item and test_ids.count(item)>1}
     for item in sorted(duplicates): issues.append({"kind":"duplicate_test_id","id":item})
     referenced=set()
     for row in requirements:
-        rid=row.get("id","").strip(); links=[x.strip() for x in row.get("test_ids","").split(";") if x.strip()]; referenced.update(links)
+        rid=_clean(row.get("id")); links=[x.strip() for x in _clean(row.get("test_ids")).split(";") if x.strip()]; referenced.update(links)
         if not rid: issues.append({"kind":"missing_requirement_id"})
         if not links: issues.append({"kind":"uncovered_requirement","id":rid})
         for test_id in links:
