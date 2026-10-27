@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trace import read_csv, validate
+from trace import main, read_csv, validate
 
 class TraceTests(unittest.TestCase):
     def test_detects_gaps_and_orphans(self):
@@ -64,5 +64,30 @@ class TraceTests(unittest.TestCase):
             )
             with self.assertRaises(csv.Error):
                 read_csv(path)
+
+    def test_rejects_duplicate_csv_headers(self):
+        # DictReader keeps only the last value for a repeated header, which
+        # can silently discard a requirement ID and make bad traceability
+        # data appear valid.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "requirements.csv"
+            path.write_text(
+                "id,id,test_ids\nR1,R2,T1\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(csv.Error, "duplicate CSV header"):
+                read_csv(path)
+
+    def test_rejects_non_utf8_csv_without_traceback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "requirements.csv"
+            path.write_bytes(b"id,test_ids\nR1,T1\n\xff\xfe")
+            with self.assertRaises(csv.Error):
+                read_csv(path)
+
+            tests_path = Path(directory) / "tests.csv"
+            tests_path.write_text("test_id\nT1\n", encoding="utf-8")
+            exit_code = main([str(path), str(tests_path)])
+            self.assertEqual(exit_code, 2)
 
 if __name__=="__main__": unittest.main()

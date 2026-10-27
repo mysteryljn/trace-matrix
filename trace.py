@@ -9,8 +9,21 @@ def read_csv(path):
     # ``DictReader`` is permissive by default: an unterminated quoted field
     # can consume the rest of the file and still produce a seemingly valid
     # row.  That can make a broken traceability file pass validation in CI.
-    with path.open(newline="", encoding="utf-8-sig") as handle:
-        return list(csv.DictReader(handle, strict=True))
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle, strict=True)
+            headers = reader.fieldnames
+            if headers is not None:
+                duplicates = sorted({header for header, count in Counter(headers).items()
+                                     if header is not None and count > 1})
+                if duplicates:
+                    raise csv.Error("duplicate CSV header(s): " + ", ".join(repr(item) for item in duplicates))
+            return list(reader)
+    except UnicodeError as exc:
+        # Treat invalid input encoding like other CSV syntax errors.  The
+        # files are external artifacts and a decoding traceback would abort
+        # the traceability check before it can produce a useful CI result.
+        raise csv.Error("invalid UTF-8 CSV: %s" % exc)
 
 def _clean(value):
     """Normalize a CSV cell, including omitted trailing cells.
