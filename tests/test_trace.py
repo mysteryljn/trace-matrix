@@ -1,10 +1,20 @@
+import csv
+import tempfile
 import unittest
-from trace import validate
+from pathlib import Path
+
+from trace import read_csv, validate
 
 class TraceTests(unittest.TestCase):
     def test_detects_gaps_and_orphans(self):
         report=validate([{"id":"R1","test_ids":"T1"},{"id":"R2","test_ids":""}],[{"test_id":"T1"},{"test_id":"T2"}])
         kinds={item["kind"] for item in report["issues"]}; self.assertIn("uncovered_requirement",kinds); self.assertIn("orphan_test",kinds); self.assertFalse(report["ok"])
+
+    def test_rejects_empty_traceability_exports(self):
+        report = validate([], [])
+        self.assertIn({"kind":"empty_requirements"}, report["issues"])
+        self.assertIn({"kind":"empty_tests"}, report["issues"])
+        self.assertFalse(report["ok"])
 
     def test_detects_duplicate_requirement_ids(self):
         report=validate(
@@ -44,5 +54,15 @@ class TraceTests(unittest.TestCase):
             report["issues"],
         )
         self.assertFalse(report["ok"])
+
+    def test_rejects_unterminated_quoted_csv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "requirements.csv"
+            path.write_text(
+                "id,description,test_ids\nR1,Requirement,\"T1\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(csv.Error):
+                read_csv(path)
 
 if __name__=="__main__": unittest.main()

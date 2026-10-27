@@ -6,7 +6,11 @@ from collections import Counter
 from pathlib import Path
 
 def read_csv(path):
-    with path.open(newline="",encoding="utf-8-sig") as handle: return list(csv.DictReader(handle))
+    # ``DictReader`` is permissive by default: an unterminated quoted field
+    # can consume the rest of the file and still produce a seemingly valid
+    # row.  That can make a broken traceability file pass validation in CI.
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle, strict=True))
 
 def _clean(value):
     """Normalize a CSV cell, including omitted trailing cells.
@@ -19,6 +23,13 @@ def _clean(value):
 
 def validate(requirements,tests):
     issues=[]
+    # An empty export is almost always a missing or truncated input file.  It
+    # must fail closed: otherwise two empty CSVs produce ``ok: true`` and a CI
+    # job can report complete traceability without checking any requirement.
+    if not requirements:
+        issues.append({"kind":"empty_requirements"})
+    if not tests:
+        issues.append({"kind":"empty_tests"})
     for source, rows in (("requirements", requirements), ("tests", tests)):
         for row_number, row in enumerate(rows, 1):
             # ``csv.DictReader`` stores values beyond the declared header under
@@ -53,7 +64,9 @@ def validate(requirements,tests):
 def main(argv=None):
     parser=argparse.ArgumentParser(description="Validate requirements-to-tests traceability"); parser.add_argument("requirements",type=Path); parser.add_argument("tests",type=Path); args=parser.parse_args(argv)
     try: report=validate(read_csv(args.requirements),read_csv(args.tests))
-    except OSError as exc: print(f"error: {exc}"); return 2
+    except (OSError, csv.Error) as exc:
+        print(f"error: {exc}")
+        return 2
     print(json.dumps(report,indent=2,ensure_ascii=False)); return 0 if report["ok"] else 1
 
 if __name__=="__main__": raise SystemExit(main())
